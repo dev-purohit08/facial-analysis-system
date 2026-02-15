@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Facial Analysis System</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+<style>
+/* --- (Your CSS unchanged, kept exactly same) --- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Poppins", sans-serif;
+}
+body {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #020617, #0f172a, #1e293b);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+}
+#videoEnroll {
+    transform: scaleX(-1);
+}
+.app-container {
+    width: 950px;
+    padding: 35px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 25px;
+    backdrop-filter: blur(15px);
+    box-shadow: 0 0 40px rgba(0,0,0,0.4);
+    text-align: center;
+}
+h1 { font-size: 34px; font-weight: 600; }
+h3 { font-weight: 300; color: #7dd3fc; margin-bottom: 25px; }
+
+button {
+    background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+    border: none;
+    color: #020617;
+    padding: 14px 28px;
+    margin: 10px;
+    border-radius: 30px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(56,189,248,0.3);
+}
+button:hover {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 10px 30px rgba(56,189,248,0.5);
+}
+button.secondary {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+button.back {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+}
+.video-card {
+    margin-top: 25px;
+    padding: 15px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.08);
+    display: inline-block;
+}
+img {
+    border-radius: 18px;
+    border: 3px solid #38bdf8;
+    box-shadow: 0 0 25px rgba(56,189,248,0.4);
+}
+input {
+    padding: 12px;
+    border-radius: 20px;
+    border: none;
+    outline: none;
+    width: 220px;
+    text-align: center;
+}
+.section { display: none; }
+.section.active { display: block; }
+.footer {
+    margin-top: 25px;
+    font-size: 13px;
+    color: #94a3b8;
+}
+#toast {
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    padding: 14px 22px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+    box-shadow: 0 0 25px rgba(0,0,0,0.4);
+    animation: fadeInOut 2.5s forwards;
+    z-index: 999;
+}
+.toast-success { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.toast-error { background: linear-gradient(135deg, #ef4444, #dc2626); }
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translateY(20px); }
+    10% { opacity: 1; transform: translateY(0); }
+    90% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(20px); }
+}
+</style>
+</head>
+
+<body>
+
+<audio id="alarmSound" src="/static/alarm.mp3" preload="auto"></audio>
+<div id="toast"></div>
+
+<div class="app-container">
+
+<div id="home" class="section active">
+    <h1>Real Time Facial Analysis System</h1>
+    <button onclick="showAnalysis()">Start Facial Analysis</button>
+    <button class="secondary" onclick="showEnroll()">Enroll New Face</button>
+    <div class="footer">© Facial AI Platform</div>
+</div>
+
+<div id="analysis" class="section">
+    <h1>Facial Analysis</h1>
+    <h3>Select Feature</h3>
+
+    <button onclick="setMode('landmark')">Landmarks</button>
+    <button onclick="setMode('emotion')">Emotion</button>
+    <button onclick="setMode('drowsy')">Drowsiness</button>
+    <button onclick="setMode('recognition')">Recognition</button>
+
+    <div class="video-card">
+        <img id="video" width="640" height="480">
+    </div>
+
+    <br>
+    <button class="back" onclick="goHome()">⬅ Back</button>
+</div>
+
+<div id="enroll" class="section">
+    <h1>Enroll New Face</h1>
+    <h3>Capture and Register User</h3>
+
+    <input id="nameInput" placeholder="Enter Name">
+    <br><br>
+    <button onclick="capturePhoto()">📸 Capture Photo</button>
+
+    <div class="video-card">
+        <img id="videoEnroll" width="640" height="480">
+    </div>
+
+    <br>
+    <button class="back" onclick="goHome()">⬅ Back</button>
+</div>
+
+</div>
+
+<script>
+const BASE_URL = window.location.origin;
+
+let videoElement = document.createElement("video");
+let canvas = document.createElement("canvas");
+let ctx = canvas.getContext("2d");
+
+let currentMode = "landmark";
+let processing = false;
+let streaming = false;
+
+let alarm = document.getElementById("alarmSound");
+let audioUnlocked = false;
+let alarmPlaying = false;
+
+/* ---------- AUDIO UNLOCK (STRONG VERSION) ---------- */
+document.addEventListener("click", () => {
+    if (!audioUnlocked) {
+        alarm.muted = false;
+        alarm.volume = 1.0;
+
+        alarm.play().then(() => {
+            alarm.pause();
+            alarm.currentTime = 0;
+            audioUnlocked = true;
+            console.log("Audio unlocked successfully");
+        }).catch(err => {
+            console.log("Unlock failed:", err);
+        });
+    }
+});
+
+/* ---------- CAMERA INIT ---------- */
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => {
+    videoElement.srcObject = stream;
+    videoElement.play();
+})
+.catch(() => {
+    showToast("Camera permission denied", "error");
+});
+
+/* ---------- PAGE NAV ---------- */
+function showAnalysis() {
+    stopStreaming();
+    switchPage("analysis");
+    streaming = true;
+    requestAnimationFrame(sendFrame);
+}
+
+function showEnroll() {
+    stopStreaming();
+    switchPage("enroll");
+    streaming = true;
+    requestAnimationFrame(sendFrame);
+}
+
+function goHome() {
+    stopStreaming();
+    stopAlarm();
+    switchPage("home");
+}
+
+function stopStreaming() {
+    streaming = false;
+    processing = false;
+
+    document.getElementById("video").src = "";
+    document.getElementById("videoEnroll").src = "";
+}
+
+function switchPage(id) {
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+}
+
+/* ---------- MODE ---------- */
+function setMode(mode) {
+    currentMode = mode;
+}
+
+/* ---------- ALARM CONTROL ---------- */
+function startAlarm() {
+    if (!audioUnlocked) return;
+
+    if (!alarmPlaying) {
+        alarm.loop = true;
+        alarm.currentTime = 0;
+        alarm.play().then(() => {
+            alarmPlaying = true;
+        }).catch(err => {
+            console.log("Playback blocked:", err);
+        });
+    }
+}
+
+function stopAlarm() {
+    if (alarmPlaying) {
+        alarm.pause();
+        alarm.currentTime = 0;
+        alarmPlaying = false;
+    }
+}
+
+/* ---------- FRAME LOOP ---------- */
+function sendFrame() {
+    if (!streaming) return;
+
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    ctx.drawImage(videoElement, 0, 0);
+
+    let dataURL = canvas.toDataURL("image/jpeg");
+
+    // ===== ANALYSIS PAGE =====
+    if (document.getElementById("analysis").classList.contains("active")) {
+
+        if (!processing) {
+            processing = true;
+
+            fetch(`${BASE_URL}/process_frame`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    image: dataURL,
+                    mode: currentMode
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+
+                document.getElementById("video").src = data.image;
+
+                // ---- DROWSY ALARM ----
+                if (data.drowsy === true) {
+                    startAlarm();
+                } else {
+                    stopAlarm();
+                }
+
+                processing = false;
+            })
+            .catch(() => {
+                processing = false;
+            });
+        }
+
+    }
+    // ===== ENROLL PAGE (RAW CAMERA ONLY) =====
+    else if (document.getElementById("enroll").classList.contains("active")) {
+        document.getElementById("videoEnroll").src = dataURL;
+        stopAlarm();
+    }
+
+    requestAnimationFrame(sendFrame);
+}
+
+/* ---------- TOAST ---------- */
+function showToast(message, type) {
+    const toast = document.getElementById("toast");
+    toast.className = type === "success" ? "toast-success" : "toast-error";
+    toast.innerText = message;
+    toast.style.display = "block";
+    setTimeout(() => { toast.style.display = "none"; }, 2500);
+}
+
+/* ---------- CAPTURE ---------- */
+function capturePhoto() {
+    const name = document.getElementById("nameInput").value.trim();
+
+    if (!name) {
+        showToast("Please enter a name first", "error");
+        return;
+    }
+
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    ctx.drawImage(videoElement, 0, 0);
+
+    let dataURL = canvas.toDataURL("image/jpeg");
+
+    fetch(`${BASE_URL}/capture/${name}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataURL })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === "saved") {
+            showToast(`Face saved for ${name}`, "success");
+        } else {
+            showToast("No face detected", "error");
+        }
+    })
+    .catch(() => showToast("Server error", "error"));
+}
+</script>
+
+
+
+
+</body>
+</html>
