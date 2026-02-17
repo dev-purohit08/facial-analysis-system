@@ -1,0 +1,9 @@
+services:
+  facial-analysis-backend:
+    build: .
+    container_name: facial-analysis-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: python main.py
